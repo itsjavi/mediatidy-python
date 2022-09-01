@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 def plot_model_results(history, epochs):
     # Visualizing results
 
@@ -27,18 +28,20 @@ def plot_model_results(history, epochs):
     plt.show()
 
 
-def plot_image_samples(image_size, class_names, batch_ds, grid_size = 3):
+def plot_image_samples(image_size, class_names, batch_ds, grid_size=3):
     dpi = 96
     dpiq = 96/4
-    
+
     plt.figure(figsize=(image_size[1]/dpiq, image_size[0]/dpiq), dpi=dpi)
-    
-    take_idx = np.random.choice(len(batch_ds)) # show a random set of images every time
+
+    # show a random set of images every time
+    take_idx = np.random.choice(len(batch_ds))
     # print("len(batch_ds) =",len(batch_ds))
-    
+
     for images, labels in batch_ds.take(take_idx):
         for i in range(grid_size*grid_size):
             ax = plt.subplot(grid_size, grid_size, i + 1)
-            plt.imshow(images[i].numpy().astype("uint8"), aspect="auto", cmap="gray")
+            plt.imshow(images[i].numpy().astype(
+                "uint8"), aspect="auto", cmap="gray")
             plt.title(class_names[labels[i]])
             plt.axis("off")
