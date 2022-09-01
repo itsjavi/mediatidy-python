@@ -1,4 +1,4 @@
-# tidyphotos
+# tidymypics
 Command-line app written in Python to classify your photo library by year,
 separating the screenshots from the actual photos using a trained Tensorflow model.
 
@@ -47,9 +47,9 @@ Once you have a model, you can use the command-line tool to organize your images
 From the source code folder, run something like this:
 
 ```bash
-# Usage: python -m tidyphotos SOURCE_DIR OUTPUT_DIR
+# Usage: python -m tidymypics SOURCE_DIR OUTPUT_DIR
 #   Example:
-python -m tidyphotos ~/Pictures/MyMessyAlbums ~/Pictures/OrganizedAlbums
+python -m tidymypics ~/Pictures/MyMessyAlbums ~/Pictures/OrganizedAlbums
 ``` 
 
 All the images will be organized by class (photo or screenshot) and year when the picture was taken.
@@ -70,6 +70,7 @@ but take in consideration the model architecture and layers:
 - Reads the images as grayscale
 - Reads the images resizing them to 800x480px (or the size specified in the notebooks)
 - Uses a Drop Out layer
-(check tidyphotos/core.py to know more)
+
+> Check `tidymypics/core.py`, `build_model()` function to know more details about the implementation.
 
 So, with the built-in (pre)processing you may lose important information depending on your classification needs (like the color).
