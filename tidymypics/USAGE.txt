@@ -1,0 +1,50 @@
+
+=====================
+    TidyMyPics 1.0.0
+=====================
+
+    Image Classifier and Organizer, by Javier Aguilar (itsjavi.com).
+    
+    Given a directory of images, analyizes it recursively,
+    separating the photos from the screenshot-like images,
+    and organizes them by year and date.
+
+    This CLI tool can also be used to train a new Deep Learning model using Tensorflow
+    > Read how in https://github.com/itsjavi/tidymypics#readme
+
+USAGE:
+
+python -m tidymypics [-h|--help|-t|--train] <SOURCE_PATH> [<DEST_PATH>] [...]
+    
+    OPTIONS:
+
+    -h | --help:    Prints this help screen.
+
+    -t | --train:   Activates the model training mode.
+                    
+                    Uses the SOURCE_PATH as train dataset to train a new model,
+                    and the DEST_PATH to test it.
+
+                    As a result, it will print how accurate your new model is for
+                    each class.
+
+                    Both directories should not be your real photo library, but
+                    pictures classified by hand in sub-directories named after each
+                    class (e.g. "photo", "screenshot", etc.).
+
+                    Read more about this in the project README.md file.
+
+
+    ARGUMENTS:
+        
+    <SOURCE_PATH>:  REQUIRED. The root directory where your (unorganized) pictures are stored.
+                    
+                    In model training mode, this will be your dataset and each sub-directory
+                    should be a different class name containing hand-classified pictures
+                    (for the final model, have at least 1000 per class).
+
+    <DEST_PATH>:    The destination directory where to copy your organized pictures library.
+                    
+                    In model training mode, you should have hand-classified pictures to test
+                    your model with, in a similar way as the train dataset. This is needed
+                    to verify that the model predicted unseen pictures correctly.

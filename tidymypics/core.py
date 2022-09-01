@@ -1,19 +1,16 @@
 import os
-import re
 import json
 import pathlib
 import shutil
 import hashlib
 import warnings
-import matplotlib.pyplot as plt
 import tensorflow as tf
 import pandas as pd
 import numpy as np
 from sklearn.metrics import classification_report as sk_classification_report
 from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
-from PIL import Image, ExifTags
-from datetime import datetime
+from PIL import Image
 from . import fs
 
 # Docs about color mode, image size, loading images etc:
@@ -22,9 +19,11 @@ from . import fs
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
+IMG_SIZE = (800, 480)
 COLOR_MODE = "grayscale"  # grayscale (1 channel), rgb (3ch), rgba (4ch)
 COLOR_CHANNELS = 1
 MODELS_PATH = os.path.join(PROJECT_DIR, 'models')
+MODEL_NAME = 'tidymypics-model'
 
 
 def ignore_warnings():
@@ -149,7 +148,7 @@ def load_img(path, image_size):
     return img_array
 
 
-def predict(model, image_path, image_size, class_names, low_score_class_map, score_threshold=70):
+def predict(model, image_path, image_size, class_names, true_class=None):
     img_batch = load_img(image_path, image_size)
     img_name = os.path.basename(image_path)
 
@@ -157,21 +156,20 @@ def predict(model, image_path, image_size, class_names, low_score_class_map, sco
     score = tf.nn.softmax(predictions[0])
     score_percent = 100 * np.max(score)
     pred_class = class_names[np.argmax(score)]
-    verdict_class = pred_class
 
-    if (score_percent < score_threshold):
-        verdict_class = low_score_class_map[verdict_class]
+    # if (score_percent < score_threshold):
+    #     verdict_class = low_score_class_map[verdict_class]
 
     return {
         "name": img_name,
         "pred_class": pred_class,
         "pred_confidence": score_percent,
-        "verdict_class": verdict_class,
+        "true_class": true_class,
         "path": image_path
     }
 
 
-def predict_dir(model, images_dir, image_size, class_names, low_score_class_map, score_threshold=70):
+def predict_dir(model, images_dir, image_size, class_names):
     pred_data_dir = pathlib.Path(images_dir)
     pred_images = list(pred_data_dir.glob('**/*.jpg')) + \
         list(pred_data_dir.glob('**/*.png'))
@@ -184,17 +182,15 @@ def predict_dir(model, images_dir, image_size, class_names, low_score_class_map,
             continue
 
         results.append(
-            predict(model, img_path, image_size, class_names,
-                    low_score_class_map, score_threshold)
+            predict(model, img_path, image_size, class_names)
         )
 
     return pd.DataFrame(results)
 
 
-def predict_df(model, images_df, image_size, class_names, low_score_class_map, score_threshold=70):
+def predict_df(model, images_df, image_size, class_names):
     for index, im in images_df.iterrows():
-        pred = predict(model, im['path'], image_size,
-                       class_names, low_score_class_map, score_threshold)
+        pred = predict(model, im['path'], image_size, class_names)
         images_df.loc[index, 'pred_class'] = pred['pred_class']
         images_df.loc[index, 'pred_confidence'] = pred['pred_confidence']
 
@@ -234,19 +230,17 @@ def organize_images_dir(src, dest):
     imgfiles = fs.get_images_recursive(src)
     imgdata = fs.get_images_metadata(imgfiles)
 
-    (model, class_names) = co.load_model_from_disk('screenshot-detector-model')
+    (model, class_names) = load_model_from_disk(MODEL_NAME)
     print("Class Names: ", class_names)
     print("Model Summary:")
     print(model.summary())
 
-    img_size = (800, 480)
+    img_size = IMG_SIZE
     imgdata['pred_class'] = None
     imgdata['pred_confidence'] = None
 
-    predictions_df = co.predict_df(model, imgdata, image_size=img_size, class_names=class_names, low_score_class_map={
-        "photo": "screenshot",
-        "screenshot": "photo"
-    }, score_threshold=70)
+    predictions_df = predict_df(
+        model, imgdata, image_size=img_size, class_names=class_names)
     predictions_df
 
     output_dir = os.path.abspath(dest)
@@ -282,3 +276,49 @@ def organize_images_dir(src, dest):
     print(
         f"Copied {copied}/{len(predictions_df)} images. Not copied: {not_copied}")
     print('Not copied: ', not_copied_paths)
+
+
+def train_test_model(
+    dataset_dir,
+    test_dir,
+    img_size=IMG_SIZE,
+    batch_size=32,
+    validation_split=0.2,
+    seed=None,
+    epochs=15
+):
+    # create train/validation dataset split, detecting classes
+    ds = ds_optimize(
+        train_validation_split(
+            images_dir=dataset_dir,
+            image_size=img_size,
+            batch_size=batch_size,
+            validation_split=validation_split,
+            seed=seed
+        )
+    )
+
+    class_names = ds[0]
+
+    # compile and build model
+    model = build_model(ds=ds, image_size=img_size)
+    model_summary = model.summary()
+
+    # train model
+    model_history = train_model(model, ds, epochs=epochs)
+
+    # generate classif. report
+    classif_report = get_classification_report(model, ds)
+
+    # persist model
+    save_model(model, MODEL_NAME, class_names)
+
+    # predict with new unseen data
+    test_pred_df = predict_dir(
+        images_dir=test_dir, class_names=class_names, image_size=img_size, model=model
+    )
+    # print(test_pred_df.to_string())
+
+    # TODO: return the classification report for the test predictions, instead of a DataFrame
+
+    return (class_names, model_summary, model_history, classif_report, test_pred_df)
