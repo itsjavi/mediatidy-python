@@ -10,19 +10,6 @@ import io
 
 def get_images_recursive(path):
     path = os.path.abspath(path)
-    # TODO add support for HEIC images
-    pattern = re.compile(".*\.(jpg|jpeg|png)$", re.IGNORECASE)
-    images = []
-    for root, dirs, files in os.walk(path):
-        for f in files:
-            if pattern.match(f):
-                images.append(os.path.join(root, f))
-    return images
-
-
-def get_images_recursive(path):
-    path = os.path.abspath(path)
-    # TODO add support for HEIC images
     pattern = re.compile(".*\.(jpg|jpeg|png)$", re.IGNORECASE)
     images = []
     for root, dirs, files in os.walk(path):
