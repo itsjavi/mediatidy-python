@@ -157,64 +157,6 @@ def load_img(path, image_size):
     return img_array
 
 
-def predict(model, image_path, image_size, class_names, true_class=None):
-    img_batch = load_img(image_path, image_size)
-    img_name = os.path.basename(image_path)
-
-    predictions = model.predict(img_batch, verbose=0, workers=2)
-    score = tf.nn.softmax(predictions[0])
-    score_percent = 100 * np.max(score)
-    pred_class = class_names[np.argmax(score)]
-
-    # if (score_percent < score_threshold):
-    #     verdict_class = low_score_class_map[verdict_class]
-
-    return {
-        "name": img_name,
-        "pred_class": pred_class,
-        "pred_confidence": score_percent,
-        "true_class": true_class,
-        "path": image_path
-    }
-
-
-def predict_dir(model, images_dir, image_size, class_names):
-    pred_data_dir = pathlib.Path(images_dir)
-    pred_images = list(pred_data_dir.glob('**/*.jpg')) + \
-        list(pred_data_dir.glob('**/*.png'))
-    results = []
-
-    for im in pred_images:
-        img_path = os.path.abspath(str(im))
-
-        if "ipynb_checkpoints" in img_path:
-            continue
-
-        results.append(
-            predict(model, img_path, image_size, class_names)
-        )
-
-    return pd.DataFrame(results)
-
-
-def predict_df(model, images_df, image_size, class_names):
-    print(" - Predicting the class of every image...")
-
-    imgc = len(images_df)
-    imgn = 0
-
-    ut.progress_bar(0, imgc)
-
-    for index, im in images_df.iterrows():
-        imgn += 1
-        pred = predict(model, im['path'], image_size, class_names)
-        images_df.loc[index, 'pred_class'] = pred['pred_class']
-        images_df.loc[index, 'pred_confidence'] = pred['pred_confidence']
-        ut.progress_bar(imgn, imgc)
-
-    return images_df
-
-
 def save_model(model, name, class_names):
     if not os.path.exists(MODELS_PATH):
         os.makedirs(MODELS_PATH)
@@ -249,77 +191,127 @@ def get_classification_report(model, ds):
     return sk_classification_report(true_categories, predicted_categories, target_names=class_names)
 
 
-def organize_images_dir(src, dest, by_year=True, move_files=False):
-    imgfiles = fs.get_images_recursive(src)
-    imgdata = fs.get_images_metadata(imgfiles)
+def predict(model, image_path, image_size, class_names, true_class=None):
+    meta = fs.get_image_metadata(image_path)
 
+    img_batch = load_img(image_path, image_size)
+    # img_name = os.path.basename(image_path)
+
+    predictions = model.predict(img_batch, verbose=0, workers=2)
+    confidence_score = tf.nn.softmax(predictions[0])
+    confidence_score_percent = 100 * np.max(confidence_score)
+    pred_class = class_names[np.argmax(confidence_score)]
+
+    meta['true_class'] = true_class
+    meta['pred_class'] = pred_class
+    meta['pred_confidence'] = confidence_score_percent
+
+    return meta
+
+
+def predict_dir(model, images_dir, class_names):
+    image_files = fs.get_images_recursive(images_dir)
+    results = []
+
+    n_imgs = len(image_files)
+    n_progress = 0
+
+    ut.progress_bar(0, n_imgs)
+
+    print(f"\n - Running predictions for all images under '{images_dir}'\n")
+
+    for img_path in image_files:
+        n_progress += 1
+        results.append(predict(
+            model=model,
+            image_path=img_path,
+            image_size=IMG_SIZE,
+            class_names=class_names,
+            true_class=None
+        ))
+        ut.progress_bar(n_progress, n_imgs)
+
+    return pd.DataFrame(results)
+
+
+def organize_images_dir(src, dest, by_year=True, move_files=False):
+    output_dir = os.path.abspath(dest)
+    verb = "Moved" if move_files == True else "Copied"
+
+    # Scan src for images
+    image_files = fs.get_images_recursive(src)
+
+    if len(image_files) == 0:
+        print("\nNo images found in the source folder.\n")
+        return
+
+    # Load model and classes
     print("\n\n--------------\n")
     (model, class_names) = load_model_from_disk(MODEL_NAME)
     print("--------------\n\n")
-
     print("Class Names: ", class_names, "\n")
-    #print("Model Summary:")
-    # print(model.summary())
 
-    img_size = IMG_SIZE
-    imgdata['pred_class'] = None
-    imgdata['pred_confidence'] = None
+    # Process file by file
+    print("\n - Classifying and organizing images...\n")
 
-    # TODO: read metadata and predict one by one, to have a single progress bar
+    # dataset = []
+    n_copied = 0
+    duplicated = []
+    n_imgs = len(image_files)
+    n_progress = 0
 
-    predictions_df = predict_df(
-        model, imgdata, image_size=img_size, class_names=class_names
-    )
+    ut.progress_bar(0, n_imgs)
 
-    output_dir = os.path.abspath(dest)
+    for img_path in image_files:
+        n_progress += 1
+        img_meta = predict(
+            model=model,
+            image_path=img_path,
+            image_size=IMG_SIZE,
+            class_names=class_names,
+            true_class=None
+        )
+        # dataset.append(img_meta)
 
-    copied = 0
-    not_copied = 0
-    not_copied_paths = []
-
-    verb = "Moved" if move_files == True else "Copied"
-
-    if move_files:
-        print("\n - Moving images...\n")
-    else:
-        print("\n - Copying images...\n")
-
-    for index, row in predictions_df.iterrows():
-        src_file = row['path']
-        md5code = row['md5hash'][0:7]
-
-        file_ext = pathlib.Path(src_file).suffix
+        # -------------- Copy or move file  ----------------------
+        md5code = img_meta['md5hash'][0:7]
+        file_ext = pathlib.Path(img_path).suffix
 
         if by_year:
             dest_path = os.path.join(
-                output_dir, row['pred_class'], row['cyear']
+                output_dir, img_meta['pred_class'], img_meta['cyear']
             )
         else:
-            dest_path = os.path.join(output_dir, row['pred_class'])
-
-        dest_file = os.path.join(
-            dest_path, row['cdate'] + '-' + md5code + file_ext)
+            dest_path = os.path.join(output_dir, img_meta['pred_class'])
 
         if not os.path.exists(dest_path):
             os.makedirs(dest_path)
 
+        dest_file = os.path.join(
+            dest_path, img_meta['cdate'] + '-' + md5code + file_ext
+        )
+
         if not os.path.exists(dest_file):
             if move_files:
-                shutil.move(src_file, dest_file)
+                shutil.move(img_path, dest_file)
             else:
                 # "noop"
-                shutil.copy2(src_file, dest_file)  # copy2 = copy with metadata
-            copied += 1
+                shutil.copy2(img_path, dest_file)  # copy2 = copy with metadata
+            n_copied += 1
         else:
-            not_copied += 1
-            not_copied_paths.append(src_file)
+            duplicated.append(img_path)
+        # --------------------------------------------------------
+
+        ut.progress_bar(n_progress, n_imgs)
 
     print(
-        f"{verb} {copied}/{len(predictions_df)} images."
+        f"{verb} {n_copied}/{len(image_files)} images."
     )
 
-    if not_copied > 0:
-        print(f'Not {verb} ({not_copied}): ', not_copied_paths)
+    if len(duplicated) > 0:
+        print(f'Not {verb} ({len(duplicated)}): ', duplicated)
+
+    # return pd.DataFrame(dataset)
 
 
 def train_test_model(
@@ -329,7 +321,7 @@ def train_test_model(
     batch_size=32,
     validation_split=0.2,
     seed=None,
-    epochs=15
+    epochs=10
 ):
     # create train/validation dataset split, detecting classes
     ds = ds_optimize(
@@ -349,7 +341,7 @@ def train_test_model(
         print(
             f" - Model '{MODEL_NAME}.h5' already exists, loading it to train with new data."
         )
-        model = load_model_from_disk(MODEL_NAME)
+        (model, _) = load_model_from_disk(MODEL_NAME)
     else:
         # compile and build the new model
         print(" - Creating a new model...")
@@ -367,7 +359,7 @@ def train_test_model(
 
     # predict with new unseen data
     test_pred_df = predict_dir(
-        images_dir=test_dir, class_names=class_names, image_size=img_size, model=model
+        images_dir=test_dir, class_names=class_names, model=model
     )
     # print(test_pred_df.to_string())
 

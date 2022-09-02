@@ -101,14 +101,14 @@ TENSORFLOW and Keras versions:
             batch_size=32,
             validation_split=0.2,
             seed=3224,
-            epochs=15
+            epochs=10
         )
 
         print("MODEL ACCURACY: ")
         print(classif_report)
 
-        print("TEST RESULTS: ")
-        print(test_pred_df.to_string())
+        #print("TEST RESULTS: ")
+        # print(test_pred_df.to_string())
     else:
         print("CLASSIFYING AND ORGANIZING IMAGES...\n")
         co.disable_tf_logger()

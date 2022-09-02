@@ -4,7 +4,7 @@ import warnings
 def progress_bar(current, total, bar_length=25):
     if total == 0:
         return
-    
+
     fraction = current / total
 
     arrow = int(fraction * bar_length - 1) * '-' + '>'

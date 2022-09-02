@@ -26,8 +26,13 @@ def get_images_recursive(path):
     images = []
     for root, dirs, files in os.walk(path):
         for f in files:
+            if "ipynb_checkpoints" in f:
+                continue
             if pattern.match(f):
-                images.append(os.path.join(root, f))
+                images.append(os.path.abspath(os.path.join(root, f)))
+
+    images.sort()
+
     return images
 
 
@@ -54,6 +59,49 @@ def timestamp_to_paths(ts):
     return (y, ymd)
 
 
+def get_image_ctime(image_path, image_obj):
+    exif = image_obj.getexif()
+
+    if exif is None:
+        return get_file_creationtime(image_path)
+
+    exifdict = {
+        ExifTags.TAGS[k]: v
+        for k, v in exif.items()
+        if k in ExifTags.TAGS
+    }
+
+    if "DateTime" in exifdict:
+        return datetime.strptime(
+            exifdict['DateTime'], "%Y:%m:%d %H:%M:%S"
+        ).timestamp()
+    else:
+        return get_file_creationtime(image_path)  # fallback to file timestamp
+
+
+def get_image_metadata(image_path):
+    img = Image.open(image_path)
+    width, height = img.size
+    ctime = get_image_ctime(image_path, image_obj=img)
+    cyear, cdate = timestamp_to_paths(ctime)
+    img.close()
+
+    md5hash = file_md5(image_path)
+
+    return {
+        "path": image_path,
+        "width": width,
+        "height": height,
+        "cyear": cyear,
+        "cdate": cdate,
+        "ctime": ctime,
+        "md5hash": md5hash,
+        "true_class": None,
+        "pred_class": None,
+        "pred_confidence": None
+    }
+
+
 def get_images_metadata(images):
     print(" - Reading EXIF data and calculating MD5 for every image...")
     meta = []
@@ -65,45 +113,13 @@ def get_images_metadata(images):
 
     for imgpath in images:
         imgn += 1
-        img = Image.open(imgpath)
-        exif = img.getexif()
-        width, height = img.size
-
-        if exif is None:
-            continue
-
-        exifdict = {
-            ExifTags.TAGS[k]: v
-            for k, v in exif.items()
-            if k in ExifTags.TAGS
-        }
-
-        if "DateTime" in exifdict:
-            ts = datetime.strptime(
-                exifdict['DateTime'], "%Y:%m:%d %H:%M:%S").timestamp()
-        else:
-            ts = get_file_creationtime(imgpath)
-
-        tspath = timestamp_to_paths(ts)
-
-        img.close()
-
-        img_hash = file_md5(imgpath)
-
-        meta.append({
-            "path": imgpath,
-            "width": width,
-            "height": height,
-            "cyear": tspath[0],
-            "cdate": tspath[1],
-            "ctime": ts,
-            "md5hash": img_hash
-        })
+        meta = get_image_metadata(imgpath)
+        meta.append(meta)
         ut.progress_bar(imgn, imgc)
 
     if len(meta) == 0:
         return pd.DataFrame()
-    
+
     df = pd.DataFrame(meta)
 
     return df.sort_values('path')
