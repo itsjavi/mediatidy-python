@@ -24,6 +24,7 @@ COLOR_MODE = "grayscale"  # grayscale (1 channel), rgb (3ch), rgba (4ch)
 COLOR_CHANNELS = 1
 MODELS_PATH = os.path.join(PROJECT_DIR, 'models')
 MODEL_NAME = 'tidymypics-model'
+MODEL_FILE = f'{MODELS_PATH}/{MODEL_NAME}.h5'
 
 
 def ignore_warnings():
@@ -207,6 +208,11 @@ def save_model(model, name, class_names):
         json.dump(class_names, f)
 
 
+def model_exists(name):
+    f = f'{MODELS_PATH}/{name}.h5'
+    return os.path.exists(f)
+
+
 def load_model_from_disk(name):
     print(f'{MODELS_PATH}/{name}.h5')
     model = tf.keras.models.load_model(f'{MODELS_PATH}/{name}.h5')
@@ -300,8 +306,15 @@ def train_test_model(
 
     class_names = ds[0]
 
-    # compile and build model
-    model = build_model(ds=ds, image_size=img_size)
+    # load existing model if exists, to train it with new data
+    if model_exists(MODEL_NAME):
+        print(f"- Model '{MODEL_NAME}.h5' already exists, loading it to train with new data.")
+        model = load_model_from_disk(MODEL_NAME)
+    else:
+        # compile and build the new model
+        print("- Creating a new model...")
+        model = build_model(ds=ds, image_size=img_size)
+    
     model_summary = model.summary()
 
     # train model
