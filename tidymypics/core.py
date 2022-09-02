@@ -232,7 +232,7 @@ def get_classification_report(model, ds):
     return sk_classification_report(true_categories, predicted_categories, target_names=class_names)
 
 
-def organize_images_dir(src, dest):
+def organize_images_dir(src, dest, by_year = True):
     imgfiles = fs.get_images_recursive(src)
     imgdata = fs.get_images_metadata(imgfiles)
 
@@ -266,7 +266,12 @@ def organize_images_dir(src, dest):
         img.close()
 
         file_ext = pathlib.Path(src_file).suffix
-        dest_path = os.path.join(output_dir, row['pred_class'], row['cyear'])
+        
+        if by_year:
+            dest_path = os.path.join(output_dir, row['pred_class'], row['cyear'])
+        else:
+            dest_path = os.path.join(output_dir, row['pred_class'])
+        
         dest_file = os.path.join(
             dest_path, row['cdate'] + '-' + md5hash[0:7] + file_ext)
         if not os.path.exists(dest_path):

@@ -19,6 +19,8 @@ def print_err(phrase: str) -> None:
 def get_validated_args():
     help_text = pathlib.Path(to_abspath('USAGE.txt')).read_text()
     training_mode = False
+    by_year = False
+
     _args = sys.argv
     del _args[0]  # first arg is always current file
 
@@ -26,7 +28,7 @@ def get_validated_args():
         print(help_text)
         sys.exit(0)
 
-    opts, args = getopt.getopt(_args, "ht:", ["help", "train"])
+    opts, args = getopt.getopt(_args, "ht:y:", ["help", "train", "year"])
 
     for opt, arg in opts:
         if opt in ("-h", "--help"):
@@ -34,6 +36,8 @@ def get_validated_args():
             sys.exit(0)
         elif opt in ("-t", "--train"):
             training_mode = True
+        elif opt in ("-y", "--year"):
+            by_year = True
 
     if len(args) != 2:
         print_err("This app needs exactly 2 arguments: SOURCE_PATH and DEST_PATH.")
@@ -66,7 +70,8 @@ def get_validated_args():
     return {
         "src_dir": src_dir,
         "dest_dir": dest_dir,
-        "training_mode": training_mode
+        "training_mode": training_mode,
+        "albums_by_year": by_year
     }
 
 
@@ -99,7 +104,7 @@ def main() -> int:
         print(test_pred_df.to_string())
     else:
         print("ORGANIZING IMAGES...")
-        co.organize_images_dir(args['src_dir'], args['dest_dir'])
+        co.organize_images_dir(args['src_dir'], args['dest_dir'], by_year=args['albums_by_year'])
 
     return 0
 
