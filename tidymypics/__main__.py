@@ -2,11 +2,13 @@ import sys
 import getopt
 import os
 import pathlib
+from packaging import version
 import tensorflow as tf
 from . import core as co
 
-SCRIPT_DIR = os.path.dirname(__file__)
+assert version.parse(tf.__version__) >= version.parse('2.9.0')
 
+SCRIPT_DIR = os.path.dirname(__file__)
 
 def to_abspath(path):
     return os.path.abspath(os.path.join(SCRIPT_DIR, path))
