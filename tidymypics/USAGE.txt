@@ -14,7 +14,7 @@
 
 USAGE:
 
-python -m tidymypics [-h|--help|-t|--train] <SOURCE_PATH> [<DEST_PATH>] [...]
+python -m tidymypics [-h|--help|-t|--train|-y|--year|-m|--move] <SOURCE_PATH> <DEST_PATH>
     
     OPTIONS:
 
@@ -33,6 +33,10 @@ python -m tidymypics [-h|--help|-t|--train] <SOURCE_PATH> [<DEST_PATH>] [...]
                     class (e.g. "photo", "screenshot", etc.).
 
                     Read more about this in the project README.md file.
+
+    -y | --year:    Groups the photos also by year (a different folder per year).
+
+    -m | --move:    Moves the photos instead of copying them.
 
 
     ARGUMENTS:

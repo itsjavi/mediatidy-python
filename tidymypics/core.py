@@ -2,7 +2,7 @@ import os
 import json
 import pathlib
 import shutil
-import hashlib
+import logging
 import warnings
 import tensorflow as tf
 import pandas as pd
@@ -12,6 +12,7 @@ from tensorflow.keras import layers
 from tensorflow.keras.models import Sequential
 from PIL import Image
 from . import fs
+from . import utils as ut
 
 # Docs about color mode, image size, loading images etc:
 # - https://www.tensorflow.org/api_docs/python/tf/keras/utils/load_img
@@ -29,6 +30,14 @@ MODEL_FILE = f'{MODELS_PATH}/{MODEL_NAME}.h5'
 
 def ignore_warnings():
     warnings.filterwarnings("ignore")
+
+
+def disable_tf_logger():
+    # show only tensorflow errors, hide warnings and debug messages
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+    tf.get_logger().setLevel(logging.ERROR)
+    tf.autograph.set_verbosity(1)
 
 
 def versions():
@@ -65,8 +74,6 @@ def train_validation_split(
     )
 
     return (train_ds.class_names, train_ds, validation_ds)
-
-# TODO add prepare_images function (resize, convert to grayscale, create variants for training (zoom, rotate, negative, etc))
 
 
 def ds_optimize(ds):
@@ -142,7 +149,8 @@ def train_model(model, ds, epochs=10):
 
 def load_img(path, image_size):
     img = tf.keras.utils.load_img(
-        path, target_size=image_size, color_mode=COLOR_MODE)
+        path, target_size=image_size, color_mode=COLOR_MODE
+    )
     img_array = tf.keras.utils.img_to_array(img)
     img_array = tf.expand_dims(img_array, 0)  # Create a batch
 
@@ -153,7 +161,7 @@ def predict(model, image_path, image_size, class_names, true_class=None):
     img_batch = load_img(image_path, image_size)
     img_name = os.path.basename(image_path)
 
-    predictions = model.predict(img_batch)
+    predictions = model.predict(img_batch, verbose=0, workers=2)
     score = tf.nn.softmax(predictions[0])
     score_percent = 100 * np.max(score)
     pred_class = class_names[np.argmax(score)]
@@ -190,10 +198,19 @@ def predict_dir(model, images_dir, image_size, class_names):
 
 
 def predict_df(model, images_df, image_size, class_names):
+    print(" - Predicting the class of every image...")
+
+    imgc = len(images_df)
+    imgn = 0
+
+    ut.progress_bar(0, imgc)
+
     for index, im in images_df.iterrows():
+        imgn += 1
         pred = predict(model, im['path'], image_size, class_names)
         images_df.loc[index, 'pred_class'] = pred['pred_class']
         images_df.loc[index, 'pred_confidence'] = pred['pred_confidence']
+        ut.progress_bar(imgn, imgc)
 
     return images_df
 
@@ -214,7 +231,7 @@ def model_exists(name):
 
 
 def load_model_from_disk(name):
-    print(f'{MODELS_PATH}/{name}.h5')
+    # print(f'{MODELS_PATH}/{name}.h5')
     model = tf.keras.models.load_model(f'{MODELS_PATH}/{name}.h5')
     with open(f'{MODELS_PATH}/{name}-class_names.json', 'r') as f:
         class_names = json.load(f)
@@ -226,28 +243,33 @@ def get_classification_report(model, ds):
     (class_names, train_ds, validation_ds) = ds
     true_categories = tf.concat([y for x, y in validation_ds], axis=0).numpy()
 
-    y_pred = model.predict(validation_ds)
+    y_pred = model.predict(validation_ds, verbose=0, workers=2)
     predicted_categories = np.argmax(y_pred, axis=1)
 
     return sk_classification_report(true_categories, predicted_categories, target_names=class_names)
 
 
-def organize_images_dir(src, dest, by_year = True):
+def organize_images_dir(src, dest, by_year=True, move_files=False):
     imgfiles = fs.get_images_recursive(src)
     imgdata = fs.get_images_metadata(imgfiles)
 
+    print("\n\n--------------\n")
     (model, class_names) = load_model_from_disk(MODEL_NAME)
-    print("Class Names: ", class_names)
-    print("Model Summary:")
-    print(model.summary())
+    print("--------------\n\n")
+
+    print("Class Names: ", class_names, "\n")
+    #print("Model Summary:")
+    # print(model.summary())
 
     img_size = IMG_SIZE
     imgdata['pred_class'] = None
     imgdata['pred_confidence'] = None
 
+    # TODO: read metadata and predict one by one, to have a single progress bar
+
     predictions_df = predict_df(
-        model, imgdata, image_size=img_size, class_names=class_names)
-    predictions_df
+        model, imgdata, image_size=img_size, class_names=class_names
+    )
 
     output_dir = os.path.abspath(dest)
 
@@ -255,38 +277,49 @@ def organize_images_dir(src, dest, by_year = True):
     not_copied = 0
     not_copied_paths = []
 
-    print("Classifying and organizing images...")
+    verb = "Moved" if move_files == True else "Copied"
+
+    if move_files:
+        print("\n - Moving images...\n")
+    else:
+        print("\n - Copying images...\n")
 
     for index, row in predictions_df.iterrows():
         src_file = row['path']
-
-        # move this to metadata df
-        img = Image.open(src_file)
-        md5hash = hashlib.md5(img.tobytes()).hexdigest()
-        img.close()
+        md5code = row['md5hash'][0:7]
 
         file_ext = pathlib.Path(src_file).suffix
-        
+
         if by_year:
-            dest_path = os.path.join(output_dir, row['pred_class'], row['cyear'])
+            dest_path = os.path.join(
+                output_dir, row['pred_class'], row['cyear']
+            )
         else:
             dest_path = os.path.join(output_dir, row['pred_class'])
-        
+
         dest_file = os.path.join(
-            dest_path, row['cdate'] + '-' + md5hash[0:7] + file_ext)
+            dest_path, row['cdate'] + '-' + md5code + file_ext)
+
         if not os.path.exists(dest_path):
             os.makedirs(dest_path)
 
         if not os.path.exists(dest_file):
-            shutil.copy2(src_file, dest_file)  # copy2 = copy with metadata
+            if move_files:
+                shutil.move(src_file, dest_file)
+            else:
+                # "noop"
+                shutil.copy2(src_file, dest_file)  # copy2 = copy with metadata
             copied += 1
         else:
             not_copied += 1
             not_copied_paths.append(src_file)
 
     print(
-        f"Copied {copied}/{len(predictions_df)} images. Not copied: {not_copied}")
-    print('Not copied: ', not_copied_paths)
+        f"{verb} {copied}/{len(predictions_df)} images."
+    )
+
+    if not_copied > 0:
+        print(f'Not {verb} ({not_copied}): ', not_copied_paths)
 
 
 def train_test_model(
@@ -313,14 +346,15 @@ def train_test_model(
 
     # load existing model if exists, to train it with new data
     if model_exists(MODEL_NAME):
-        print(f"- Model '{MODEL_NAME}.h5' already exists, loading it to train with new data.")
+        print(
+            f" - Model '{MODEL_NAME}.h5' already exists, loading it to train with new data."
+        )
         model = load_model_from_disk(MODEL_NAME)
     else:
         # compile and build the new model
-        print("- Creating a new model...")
+        print(" - Creating a new model...")
         model = build_model(ds=ds, image_size=img_size)
-    
-    model_summary = model.summary()
+        model_summary = model.summary()
 
     # train model
     model_history = train_model(model, ds, epochs=epochs)

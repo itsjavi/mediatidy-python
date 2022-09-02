@@ -1,11 +1,23 @@
+import hashlib
 import re
 import os
+import sys
 import pandas as pd
 from PIL import Image, ExifTags
 from datetime import datetime
 import requests
 import zipfile
 import io
+from . import utils as ut
+
+
+def file_md5(fname):
+    buffer_size = 4096
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(buffer_size), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 
 def get_images_recursive(path):
@@ -20,13 +32,16 @@ def get_images_recursive(path):
 
 
 def get_file_creationtime(path):
-    ctime = os.path.getctime(path)  # Windows only
-    if ctime is not None and ctime > 0:
-        return ctime
+    platform = sys.platform.lower()
 
-    ctime = os.stat(path).st_birthtime  # MacOS, some UNIX
-    if ctime is not None and ctime > 0:
-        return ctime
+    if "darwin" in platform or "linux" in platform:  # MacOS, some UNIX
+        ctime = os.stat(path).st_birthtime
+        if ctime is not None and ctime > 0:
+            return ctime
+    elif "win" in platform:  # Windows only
+        ctime = os.path.getctime(path)
+        if ctime is not None and ctime > 0:
+            return ctime
 
     # cross-platform, but it's the modification time
     return os.path.getmtime(path)
@@ -40,9 +55,16 @@ def timestamp_to_paths(ts):
 
 
 def get_images_metadata(images):
+    print(" - Reading EXIF data and calculating MD5 for every image...")
     meta = []
 
+    imgc = len(images)
+    imgn = 0
+
+    ut.progress_bar(0, imgc)
+
     for imgpath in images:
+        imgn += 1
         img = Image.open(imgpath)
         exif = img.getexif()
         width, height = img.size
@@ -64,18 +86,27 @@ def get_images_metadata(images):
 
         tspath = timestamp_to_paths(ts)
 
+        img.close()
+
+        img_hash = file_md5(imgpath)
+
         meta.append({
             "path": imgpath,
             "width": width,
             "height": height,
             "cyear": tspath[0],
             "cdate": tspath[1],
-            "ctime": ts
+            "ctime": ts,
+            "md5hash": img_hash
         })
+        ut.progress_bar(imgn, imgc)
 
-        img.close()
+    if len(meta) == 0:
+        return pd.DataFrame()
+    
+    df = pd.DataFrame(meta)
 
-    return pd.DataFrame(meta)
+    return df.sort_values('path')
 
 
 def extract_zip_from_url(url, dest):

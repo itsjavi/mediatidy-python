@@ -20,6 +20,7 @@ def get_validated_args():
     help_text = pathlib.Path(to_abspath('USAGE.txt')).read_text()
     training_mode = False
     by_year = False
+    move_files = False
 
     _args = sys.argv
     del _args[0]  # first arg is always current file
@@ -28,7 +29,8 @@ def get_validated_args():
         print(help_text)
         sys.exit(0)
 
-    opts, args = getopt.getopt(_args, "ht:y:", ["help", "train", "year"])
+    opts, args = getopt.getopt(
+        _args, "ht:y:m:", ["help", "train", "year", "move"])
 
     for opt, arg in opts:
         if opt in ("-h", "--help"):
@@ -38,6 +40,8 @@ def get_validated_args():
             training_mode = True
         elif opt in ("-y", "--year"):
             by_year = True
+        elif opt in ("-m", "--move"):
+            move_files = True
 
     if len(args) != 2:
         print_err("This app needs exactly 2 arguments: SOURCE_PATH and DEST_PATH.")
@@ -71,19 +75,22 @@ def get_validated_args():
         "src_dir": src_dir,
         "dest_dir": dest_dir,
         "training_mode": training_mode,
-        "albums_by_year": by_year
+        "albums_by_year": by_year,
+        "move_files": move_files
     }
 
 
 def main() -> int:
-    # show only tensorflow errors, hide warnings and debug messages
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    tf.get_logger().setLevel('ERROR')
-
     args = get_validated_args()
+    print(f"""
 
-    print("TENSORFLOW =", co.versions())
-    print("CONFIG =", args)
+PARAMETERS:
+    {args}
+
+TENSORFLOW and Keras versions:
+    {co.versions()}
+
+""")
 
     if args['training_mode'] == True:
         print("TRAINING A NEW MODEL...")
@@ -103,8 +110,16 @@ def main() -> int:
         print("TEST RESULTS: ")
         print(test_pred_df.to_string())
     else:
-        print("ORGANIZING IMAGES...")
-        co.organize_images_dir(args['src_dir'], args['dest_dir'], by_year=args['albums_by_year'])
+        print("CLASSIFYING AND ORGANIZING IMAGES...\n")
+        co.disable_tf_logger()
+        co.organize_images_dir(
+            src=args['src_dir'],
+            dest=args['dest_dir'],
+            by_year=args['albums_by_year'],
+            move_files=args['move_files']
+        )
+
+    print("\nDONE\n")
 
     return 0
 
