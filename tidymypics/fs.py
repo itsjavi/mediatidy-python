@@ -5,6 +5,7 @@ import sys
 import pandas as pd
 from PIL import Image, ExifTags
 from datetime import datetime
+#import dateutil.parser
 import requests
 import zipfile
 import io
@@ -71,12 +72,35 @@ def get_image_ctime(image_path, image_obj):
         if k in ExifTags.TAGS
     }
 
-    if "DateTime" in exifdict:
-        return datetime.strptime(
-            exifdict['DateTime'], "%Y:%m:%d %H:%M:%S"
-        ).timestamp()
-    else:
-        return get_file_creationtime(image_path)  # fallback to file timestamp
+    dt = None
+
+    pattern1 = re.compile("\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}")
+    datefmt1 = "%Y:%m:%d %H:%M:%S"
+
+    pattern2 = re.compile("\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}-\d{2}:\d{2}")
+    datefmt2 = "%Y-%m-%dT%H:%M:%S%z"
+
+    if "DateTimeOriginal" in exifdict:
+        d = exifdict['DateTimeOriginal']
+    elif "DateTimeDigitalized" in exifdict:
+        d = exifdict['DateTimeDigitalized']
+        #return datetime.strptime(d, datefmt).timestamp()
+    elif "DateTime" in exifdict:
+        d = exifdict['DateTime']
+        #return datetime.strptime(d, datefmt).timestamp()
+
+    if dt is not None:
+        dt = dt.replace(" 24:", " 00:").replace("T24:", "T00:")
+        
+        if pattern1.match(dt):
+            return datetime.strptime(dt, datefmt1).timestamp()
+        if pattern2.match(dt):
+            return datetime.strptime(dt, datefmt2).timestamp()
+        
+        # should not happen
+        return datetime.strptime(dt, datefmt1).timestamp()
+    
+    return get_file_creationtime(image_path)  # fallback to file timestamp
 
 
 def get_image_metadata(image_path):

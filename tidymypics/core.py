@@ -264,25 +264,33 @@ def organize_images_dir(src, dest, by_year=True, move_files=False):
 
     for img_path in image_files:
         n_progress += 1
-        img_meta = predict(
-            model=model,
-            image_path=img_path,
-            image_size=IMG_SIZE,
-            class_names=class_names,
-            true_class=None
-        )
+
+        try:
+            img_meta = predict(
+                model=model,
+                image_path=img_path,
+                image_size=IMG_SIZE,
+                class_names=class_names,
+                true_class=None
+            )
+        except BaseException as err:
+            print(f"Unexpected {err=}, {type(err)=}, when reading file {img_path}")
+            raise
         # dataset.append(img_meta)
 
         # -------------- Copy or move file  ----------------------
         md5code = img_meta['md5hash'][0:7]
         file_ext = pathlib.Path(img_path).suffix
+        # file_folder = os.path.basename(os.path.dirname(img_path))
 
         if by_year:
             dest_path = os.path.join(
                 output_dir, img_meta['pred_class'], img_meta['cyear']
+                #output_dir, file_folder, img_meta['cyear']
             )
         else:
             dest_path = os.path.join(output_dir, img_meta['pred_class'])
+            # dest_path = os.path.join(output_dir, file_folder)
 
         if not os.path.exists(dest_path):
             os.makedirs(dest_path)
@@ -292,6 +300,7 @@ def organize_images_dir(src, dest, by_year=True, move_files=False):
         )
 
         if not os.path.exists(dest_file):
+            print(img_path)
             if move_files:
                 shutil.move(img_path, dest_file)
             else:

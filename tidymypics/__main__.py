@@ -66,12 +66,12 @@ def get_validated_args():
         )
         sys.exit(1)
 
-    if training_mode == False and os.path.isdir(dest_dir):
-        # attempting to use an existing dir to output the organized photo library in
-        print(
-            f"DEST_PATH ERROR: '{dest_dir}' already exists and cannot be used as output directory."
-        )
-        sys.exit(1)
+    # if training_mode == False and os.path.isdir(dest_dir):
+    #     # attempting to use an existing dir to output the organized photo library in
+    #     print(
+    #         f"DEST_PATH ERROR: '{dest_dir}' already exists and cannot be used as output directory."
+    #     )
+    #     sys.exit(1)
 
     return {
         "src_dir": src_dir,
